@@ -85,6 +85,7 @@ outname='out.mp4'
 #save video type
 fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
 #running device
+# device = "cpu"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 #model select
 model_select = 'yolov5_s'
@@ -134,12 +135,30 @@ class Detection():
         std_max=mean + Sigma * std
         for i,j in enumerate(data):
             if not std_min<j<std_max:
-                if i==0:
-                    data[i]=data[i+1]
-                elif i==len(data)-1:
-                    data[i]=data[i-1]
-                else:
-                    data[i]=avg(data[i-1],data[i+1])
+                if i != len(data)-1:
+                    next = i
+                    while data[next] != 0:
+                        if next != len(data)-1:
+                            next += 1
+                        else:
+                            break
+                    if i == 0:
+                        diff = (data[next] / next) - (i + 1)
+                    else:
+                        diff = data[i-1] + ((data[next] / next) - (i + 1))
+                    next -= 1
+                    while next > 0:
+                        data[next] = diff * ((next + 1) * diff)
+                        next -= 1
+                elif i == len(data)-1:
+                    diff = data[i-1] / 2
+                    data[i] = diff
+                # if i==0:
+                #     data[i]=data[next]
+                # elif i==len(data)-1:
+                #     data[i]=data[i-1]
+                # else:
+                    # data[i]=avg(data[i-1],data[i+1])
         return data
     def derived(self,kernel_size=3):
         global f
