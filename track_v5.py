@@ -1,6 +1,7 @@
 import argparse
 import datetime as date
-datetime=date.datetime
+
+datetime = date.datetime
 import os
 
 # limit the number of cpus used by high performance libraries
@@ -25,9 +26,22 @@ warnings.filterwarnings("ignore")
 import torch
 import torch.backends.cudnn as cudnn
 
+import mysql.connector
+import sqlinfo as sql
+import time
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 strongsort root directory
 WEIGHTS = ROOT / "weights"
+
+
+maxdb = mysql.connector.connect(
+    host=sql.host,
+    user=sql.user,
+    password=sql.password,
+    database=sql.database,
+)
+cursor = maxdb.cursor()
 
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
@@ -69,11 +83,14 @@ from strong_sort.strong_sort import StrongSORT
 
 # remove duplicated stream handler to avoid duplicated logging
 logging.getLogger().removeHandler(logging.getLogger().handlers[0])
-def avg(a,b):
-    return (a+b)/2
+
+
+def avg(a, b):
+    return (a + b) / 2
+
 
 class Detection:
-    def __init__(self):
+    def __init__(self, DIS_THRESHOLD, classroom):
         self.tracer_dict = {}
         self.null_count = {}
         self.cmd = {}
@@ -81,6 +98,8 @@ class Detection:
         self.null_max = 15
         self.i = 0
         self.is_start = False
+        self.DIS_THRESHOLD = DIS_THRESHOLD
+        self.classroom = classroom
 
     def in_conv(self, cmd, person_id, x1, y1, x2, y2):
         self.cmd[person_id] = cmd
@@ -101,7 +120,7 @@ class Detection:
                 if self.null_count[person] >= self.null_max:
                     self.cmd[person] = "end"
                     # 如果我連續n椹沒有收到這個人的id 那麼就cmd=end
-        kill=[]
+        kill = []
         for _, (person, comand) in enumerate(self.cmd.items()):
             if comand == "end":
                 self.derived(person)
@@ -112,30 +131,31 @@ class Detection:
             del self.cmd[person]
 
         return self.cmd
-    def clear_deviation(self,data, Sigma=1):
+
+    def clear_deviation(self, data, Sigma=1):
         for i, j in enumerate(data):
-            if j==0:
+            if j == 0:
                 if i != len(data):
                     next = i
                     while data[next] == 0:
-                        if next != len(data)-1:
+                        if next != len(data) - 1:
                             next += 1
                         else:
                             break
-                    #print(i,next)
+                    # print(i,next)
                     if i == 0:
-                        diff = (data[next]-data[i])/(next-(i-1))
-                        #print(diff)
-                        next-=1
+                        diff = (data[next] - data[i]) / (next - (i - 1))
+                        # print(diff)
+                        next -= 1
                         while next >= 0:
-                            #print(next)
-                            data[next] = data[i] + diff* (next+1)
+                            # print(next)
+                            data[next] = data[i] + diff * (next + 1)
                             next -= 1
                     else:
-                        diff = (data[next]-data[i-1])/(next-(i-2))
-                        next-=1
-                        while next > i-1:
-                            data[next] = data[i-1] + diff* (next-(i-1))
+                        diff = (data[next] - data[i - 1]) / (next - (i - 2))
+                        next -= 1
+                        while next > i - 1:
+                            data[next] = data[i - 1] + diff * (next - (i - 1))
                             next -= 1
                 elif i == len(data) - 1:
                     diff = data[i - 1] / 2
@@ -148,7 +168,6 @@ class Detection:
                 # data[i]=avg(data[i-1],data[i+1])
         return data
 
-
     def derived(self, person_id, kernel_size=3):
         data = self.tracer_dict[person_id].transpose()
         data[0] = self.clear_deviation(data[0])
@@ -159,6 +178,30 @@ class Detection:
 
         self.result = sum(clean_data)
         print("Person ID: ", person_id, "Distance: ", self.result)
+        if self.result >= self.DIS_THRESHOLD:
+            self.sql_write_access(self.classroom)
+
+    def sql_write_access(self, room):
+        time_tmp = time.localtime(time.time())
+        time_now = (
+            str(time_tmp.tm_year)
+            + "-"
+            + str(time_tmp.tm_mon)
+            + "-"
+            + str(time_tmp.tm_mday)
+            + " "
+            + str(time_tmp.tm_hour)
+            + ":"
+            + str(time_tmp.tm_min)
+            + ":"
+            + str(time_tmp.tm_sec)
+        )
+        cursor.execute(
+            "insert into access(classroom,access_time)VALUES(%d,'%s');"
+            % (room, time_now)
+        )
+        maxdb.commit()
+        print("access_time: ", time_now)
 
 
 # %%
@@ -197,8 +240,10 @@ def run(
     dnn=False,  # use OpenCV DNN for ONNX inference
     count=False,  # get counts of every obhects
     draw=False,  # draw object trajectory lines
+    DIS_THRESHOLD=3,
+    classroom=0,
 ):
-    detect = Detection()
+    detect = Detection(DIS_THRESHOLD=float(DIS_THRESHOLD), classroom=int(classroom))
     act = "init"
     source = str(source)
     save_img = not nosave and not source.endswith(".txt")  # save inference images
@@ -369,7 +414,7 @@ def run(
                             detect = Detection()
                         id = output[4]
                         cls = output[5]
-                        bbox_left, bbox_top, bbox_right, bbox_bottom = bboxes 
+                        bbox_left, bbox_top, bbox_right, bbox_bottom = bboxes
 
                         if draw:
                             # object trajectory
@@ -466,7 +511,7 @@ def run(
 
             else:
                 strongsort_list[i].increment_ages()
-                #LOGGER.info("No detections")
+                # LOGGER.info("No detections")
 
             if count:
                 itemDict = {}
@@ -559,7 +604,7 @@ def run(
 
     # Print results
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
-    #print(t)
+    # print(t)
     LOGGER.info(
         f"Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms strong sort update per image at shape {(1, 3, *imgsz)}"
         % t
@@ -678,6 +723,10 @@ def parse_opt():
     )
     parser.add_argument(
         "--dnn", action="store_true", help="use OpenCV DNN for ONNX inference"
+    )
+    parser.add_argument("--classroom", default=0, help="classroom number to track")
+    parser.add_argument(
+        "--DIS_THRESHOLD", default=3, help="moving distance threshold(1=100px)"
     )
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand

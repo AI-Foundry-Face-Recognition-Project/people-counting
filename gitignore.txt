@@ -1,0 +1,3 @@
+sqlinfo.py
+B1_Cam1_1.mp4
+b1_cam1_2.avi

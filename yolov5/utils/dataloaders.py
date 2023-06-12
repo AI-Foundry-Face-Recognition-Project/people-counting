@@ -295,7 +295,7 @@ class LoadImages:
             # Read video
             self.mode = "video"
             ret_val, img0 = self.cap.read()
-            img0=img0[0:1080, 200:1500]
+            img0 = img0[0:1080, 350:1500]
             while not ret_val:
                 self.count += 1
                 self.cap.release()
@@ -304,7 +304,7 @@ class LoadImages:
                 path = self.files[self.count]
                 self.new_video(path)
                 ret_val, img0 = self.cap.read()
-                img0=img0[0:1080, 200:1500]
+                img0 = img0[0:1080, 350:1500]
             self.frame += 1
             s = f"video {self.count + 1}/{self.nf} ({self.frame}/{self.frames}) {path}: "
 
@@ -355,7 +355,7 @@ class LoadWebcam:  # for inference
 
         # Read frame
         ret_val, img0 = self.cap.read()
-        img0=img0[0:1080, 200:1500]
+        img0 = img0[0:1080, 350:1500]
         img0 = cv2.flip(img0, 1)  # flip left-right
 
         # Print
@@ -433,7 +433,7 @@ class LoadStreams:
             )  # 30 FPS fallback
 
             _, self.imgs[i] = cap.read()  # guarantee first frame
-            self.imgs[i]=self.imgs[i][0:1080, 200:1500]
+            self.imgs[i] = self.imgs[i][0:1080, 350:1500]
             self.threads[i] = Thread(
                 target=self.update, args=([i, cap, s]), daemon=True
             )
