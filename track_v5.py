@@ -27,9 +27,9 @@ import torch
 import torch.backends.cudnn as cudnn
 
 import mysql.connector
+from mysql.connector import Error
 import sqlinfo as sql
 import time
-
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 strongsort root directory
 WEIGHTS = ROOT / "weights"
@@ -41,7 +41,6 @@ maxdb = mysql.connector.connect(
     password=sql.password,
     database=sql.database,
 )
-cursor = maxdb.cursor()
 
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
@@ -196,11 +195,26 @@ class Detection:
             + ":"
             + str(time_tmp.tm_sec)
         )
-        cursor.execute(
-            "insert into access(classroom,access_time)VALUES(%d,'%s');"
-            % (room, time_now)
-        )
-        maxdb.commit()
+        try:
+            connection =  mysql.connector.connect(
+                host=sql.host,
+                user=sql.user,
+                password=sql.password,
+                database=sql.database,
+            )
+            if connection.is_connected():
+                cursor = connection.cursor()
+                cursor.execute(
+                    "insert into access(classroom,access_time)VALUES(%d,'%s');"
+                    % (room, time_now)
+                )
+                connection.commit()
+        except Error as e:
+            print("資料庫連接失敗：", e)
+        finally:
+            if (connection.is_connected()):
+                cursor.close()
+                connection.close()
         print("access_time: ", time_now)
 
 
